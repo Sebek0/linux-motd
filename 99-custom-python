@@ -1,0 +1,162 @@
+#!/bin/python3
+import subprocess
+import psutil
+import socket
+
+from datetime import datetime
+from enum import Enum
+
+from rich.console import Console
+
+class Emoji(Enum):
+    GREEN = "🟢"
+    YELLOW = "🟡"
+    RED = "🔴"
+    WRENCH = "🔧"
+    FOLDER = "📂"
+    BRAIN = "🧠"
+    SWAP = "🔄"
+    USERS = "👥"
+    NETWORK = "🌐"
+
+# Main Console class instance resposible for displaying everything in terminal
+# window
+console = Console(force_terminal=True)
+
+# Predefining core services that will be checked and displayed. 
+services = ['apache2.service', 'sshd.service', 'docker.service']
+
+# Styles for console print
+style = "bold"
+
+# Styles for rules (long lines with title or not)
+rule_style = "bold green"
+
+# Fetching system information with psutils that don't need any parsing
+date = datetime.now().strftime("%Y-%m-%d %H:%M")
+hostname = socket.gethostname()
+kernel_version = str(subprocess.check_output(['uname', '-sv']).decode().strip())
+memory = psutil.virtual_memory()
+swap = psutil.swap_memory()
+load_avg = psutil.getloadavg()
+
+
+def get_system_uptime() -> str:
+    uptime = subprocess.run(['uptime', '-p'], capture_output=True).stdout.decode("utf-8").strip().split(",")[:3]
+
+    return ",".join(uptime)
+
+
+def get_top_used_disks() -> list:
+    storage = []
+    disks = psutil.disk_partitions()
+    
+    for index, disk in enumerate(disks):
+        disk_usage = psutil.disk_usage(disk.mountpoint).percent
+        if len(storage) <= 0:
+            storage.append({"mountpoint": disk.mountpoint, "usage": disk_usage})
+        elif disk_usage < storage[index - 1]['usage'] and len(storage) < 3:
+            storage.append({"mountpoint": disk.mountpoint, "usage": disk_usage})
+    
+    return sorted(storage, key=lambda d: d['usage'], reverse=True)
+
+
+def get_current_users() -> int | str:
+    users = psutil.users()
+
+    if len(users) >= 5:
+        return f"Active users: {len(users)}"
+    
+    cur_users = [user.name for user in users]
+    return ', '.join(cur_users)
+
+
+def get_services_status(services: list) -> dict:
+    results = {}
+
+    for service in services:
+        is_active = subprocess.run(
+            ['systemctl', 'is-active', service],
+            stdout=subprocess.PIPE,
+            text=True
+        )
+        results[service] = {"is_active": is_active.stdout.strip()}
+
+    return results
+
+
+def create_text_rule(text: str = "", start: int = 0, length: int = 10) -> str:
+    left_padding = max(start - 1, 0)
+    text_length = len(text)
+    right_padding = max(length - (left_padding + text_length), 0)
+    
+    if left_padding + text_length > length:
+        text = text[:length - left_padding]
+        right_padding = 0
+
+    return "─" * (left_padding - 1) + " " + text + " " + "─" * (right_padding - 1)
+
+
+def main():
+    console.print(create_text_rule("🖥️  General", 10, 60), style=rule_style)
+    console.print(f"{'Hostname':<20}" + f"{':':<3}" + f"{hostname}", style=style)
+    console.print(f"{'Date':<20}" + f"{':':<3}" + f"{date}", style=style)
+    console.print(f"{'Uptime':<20}" + f"{':':<3}" + f"{get_system_uptime()}", style=style)
+    console.print(f"{'Load average':<20}" + f"{':':<3}" + f"{load_avg[0]:.2f}, {load_avg[1]:.2f}, {load_avg[2]:.2f}", style=style)
+    console.print(f"{'Kernel':<20}" + f"{':':<3}" + f"{kernel_version}", style=style)
+
+    console.print("")
+    console.print(create_text_rule(f"{Emoji.FOLDER.value} Disk Usage (Top 3)", 10, 60), style=rule_style)
+    
+    for disk in get_top_used_disks():
+        if disk['usage'] >= 50 and disk['usage'] < 85: # Dla wydajnosci sprawdzanie 85% powinno byc pierwsze
+            console.print(f"{disk['mountpoint']:<20}" + f"{':':<3}" + f"{disk['usage']}% {Emoji.YELLOW.value}", style=style)
+        elif disk['usage'] >= 85:
+            console.print(f"{disk['mountpoint']:<20}" + f"{':':<3}" + f"{disk['usage']}% {Emoji.RED.value}", style=style)
+        else:
+            console.print(f"{disk['mountpoint']:<20}" + f"{':':<3}" + f"{disk['usage']}% {Emoji.GREEN.value}", style=style)
+
+    console.print("")
+    console.print(create_text_rule(f"{Emoji.BRAIN.value} Memory", 10, 60), style=rule_style)
+    console.print(f"{Emoji.BRAIN.value} RAM", style=style)
+    console.print(f"{'Total':<20}" + f"{':':<3}" + f"{(memory.total / (1024*1024)):.0f} MB", style=style)
+    console.print(f"{'Used':<20}" + f"{':':<3}" + f"{(memory.used / (1024*1024)):.0f} MB ({memory.percent}%)", style=style)
+    console.print(f"{'Available':<20}" + f"{':':<3}" + f"{(memory.available / (1024*1024)):.0f} MB", style=style)
+    console.print("")
+
+    console.print(f"{Emoji.SWAP.value} Swap", style=style)
+    console.print(f"{'Total':<20}" + f"{':':<3}" + f"{(swap.total / (1024*1024)):.0f} MB", style=style)
+    console.print(f"{'Used':<20}" + f"{':':<3}" + f"{(swap.used / (1024*1024)):.0f} MB", style=style)
+    console.print(f"{'Free':<20}" + f"{':':<3}" + f"{(swap.free / (1024*1024)):.0f} MB", style=style)
+    console.print("")
+    
+    console.print(create_text_rule(f"{Emoji.NETWORK.value} Network Interfaces", 10, 60), style=rule_style)
+    
+    for nic, addrs in psutil.net_if_addrs().items():
+        for addr in addrs:
+            if addr.family == 2:
+                console.print(f"{nic:<20}" + f"{':':<3}" + f"{addr.address}", style=style)
+
+    console.print("")
+    console.print(create_text_rule(f"{Emoji.USERS.value} Users Online", 10, 60), style=rule_style)
+    console.print(f"{get_current_users()}", style=style)
+    
+    console.print("")
+    console.print(create_text_rule(f"{Emoji.WRENCH.value} Core Services", 10, 60), style=rule_style)
+    
+    for service, status in get_services_status(services=services).items():
+        if status.get('is_active') == "active":
+            console.print(f"{service:<20}" + f"{':':<3}" + f"Active {Emoji.GREEN.value}", style=style)
+        elif status.get('is_active') == "inactive":
+            console.print(f"{service:<20}" + f"{':':<3}" + f"Inactive {Emoji.RED.value}", style=style)
+        else:
+            console.print(f"{service:<20}" + f"{':':<3}" + f"{status.get('is-active')} {Emoji.YELLOW.value}", style=style)
+
+    # END OF SCRIPT
+    console.print("\n")
+if __name__ == "__main__":
+    #import time
+    #start_time = time.time()
+    main()
+    #console.log("--- %s seconds ---" % (time.time() - start_time))
+
