@@ -63,8 +63,8 @@ python3 99-custom-python
 ## Use Cases
 
 This script is useful for:
-	•	Quickly assessing system health after logging in via SSH
-	•	Performing routine checks on system resource usage
-	•	Generating a terminal-based system summary for administrators or developers
-    •	Creating a colorful, informative MOTD (message of the day)
+-   Quickly assessing system health after logging in via SSH
+-   Performing routine checks on system resource usage
+-   Generating a terminal-based system summary for administrators or developers
+-   Creating a colorful, informative MOTD (message of the day)
 
